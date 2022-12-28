@@ -1,0 +1,211 @@
+clc
+%clear all
+% close all
+
+groupID = {'Cogthyr_con_'};
+pre12 = {'_pre_1','_pre_2'};
+
+ for subType = 1;
+ for subID = [];%participants    
+ for sesID = 1:2;
+
+snirf = SnirfLoad([groupID{subType} sprintf('%02d',subID) pre12{sesID} '.snirf']);%and pre_2
+
+[groupID{subType} sprintf('%02d',subID) pre12{sesID} ]
+
+procResult.mlActMan{1} = ones(size(snirf.GetMeasList,1),1);
+procResult.tInc{1}= ones(size(snirf.Get_t,1),1);
+
+mlActAuto = hmrR_PruneChannels(snirf.data, snirf.probe ,procResult.mlActMan , procResult.tInc, [1e-04  1e+0 ], 12, [0.0 40.0]);
+% mlActAuto = hmrR_PruneChannels(data, probe, mlActMan, tInc, dRange, SNRthresh, SDrange)
+
+dod = hmrR_Intensity2OD( snirf.data );
+
+nSV = 0;
+[dod3, svs, nSV] = hmrR_PCAFilter( dod, mlActAuto, procResult.tInc, nSV );
+dod2 = hmrR_BandpassFilt(dod3, 0.05, 0.5);
+
+tMotion = 0.5;% Units of seconds.    Typical value ranges from 0.1 to 0.5.
+tMask = 1; %Units of seconds. Typical value ranges from 0.5 to 1
+STDEVthresh = 30;
+AMPthresh =  1;
+procResult.tIncAuto = hmrR_MotionArtifact(dod2, snirf.probe, procResult.mlActMan, mlActAuto, procResult.tInc, tMotion, tMask, STDEVthresh, AMPthresh);
+
+tRange =[-5 5];
+[procResult.stim, tRange] = hmrR_StimRejection(dod2, snirf.stim, procResult.tIncAuto, procResult.tInc, tRange);
+
+[tInc,tIncCh] = hmrR_MotionArtifactByChannel(dod2, snirf.probe, procResult.mlActMan, mlActAuto, procResult.tInc, tMotion, tMask, STDEVthresh, AMPthresh);
+
+p = 0.99;
+dod4 = hmrR_MotionCorrectSpline(dod2, procResult.mlActMan, tIncCh, p);
+%data_dod = hmrR_MotionCorrectSpline(data_dod, mlAct, tIncCh, p, turnon)
+
+XX = []; %this is age based (not shown here for anonymity) be used for ppf in hmrR_OD2Conc
+
+dc = hmrR_OD2Conc( dod4, snirf.probe, [XX(subID,:)] );
+
+% data - this is the concentration data with dimensions #time points x [HbO/HbR/HbT] x #channels
+% stim - stimulation vector (# time points x #conditions)=1 at stim onset otherwise =0
+% probe - source detector stucture (units should be consistent with rhoSD_ssThresh)
+procResult.mlActAuto = mlActAuto;
+procResult.Aaux = [];
+rcMap = [];%snirf.aux;
+trange = [-2 12]; 
+glmSolveMethod = 1;
+idxBasis = 1;
+paramsBasis = [0.5 0.5];
+rhoSD_ssThresh = 15;
+flagNuisanceRMethod = 2;
+driftOrder = 3;
+c_vector = [0];
+[yHRF_SS, dcAvgStd, nTrials, dcNew, dcResid, dcSum2, beta, R, hmrstats] = hmrR_GLM(dc, procResult.stim, snirf.probe, procResult.mlActAuto, procResult.Aaux, procResult.tIncAuto, rcMap, trange, glmSolveMethod, idxBasis, paramsBasis, rhoSD_ssThresh, flagNuisanceRMethod, driftOrder, c_vector);
+
+result = yHRF_SS.GetDataTimeSeries('reshape');
+%dcAvg.GetDataTimeSeries('reshape');
+
+% hh1 = figure; %Array figure
+% plotProbe_old(squeeze(yHRF_SS(:,:,:,1)), tHRF, SD, hh1, [], [1 1]);
+% 
+%  hh2 = figure; %Array figure
+%  plotProbe_old(squeeze(yHRF_SS(:,:,:,2)), tHRF, SD, hh2, [], [1 1]);
+% 
+% hh3 = figure; %Array figure
+% plotProbe_old(squeeze(yHRF_SS(:,:,:,3)), tHRF, SD, hh3, [], [1 1]);
+% 
+% hh4 = figure; %Array figure
+% plotProbe_old(squeeze(yHRF_SS(:,:,:,4)), tHRF, SD, hh4, [], [1 1]);
+
+Left_ROI = [22 23 24 25];
+Right_ROI = [29 30 31 32];
+
+all_chan_oxy_1_ipsi_L{subType}{sesID,subID} = squeeze(yHRF_SS(:,1,Left_ROI,1));
+all_chan_oxy_2_contra_L{subType}{sesID,subID} = squeeze(yHRF_SS(:,1,Left_ROI,2));
+all_chan_oxy_3_ipsi_L{subType}{sesID,subID} = squeeze(yHRF_SS(:,1,Left_ROI,3));
+all_chan_oxy_4_contra_L{subType}{sesID,subID} = squeeze(yHRF_SS(:,1,Left_ROI,4));
+
+all_chan_oxy_1_contra_R{subType}{sesID,subID} = squeeze(yHRF_SS(:,1,Right_ROI,1));
+all_chan_oxy_2_ipsi_R{subType}{sesID,subID} = squeeze(yHRF_SS(:,1,Right_ROI,2));
+all_chan_oxy_3_contra_R{subType}{sesID,subID} = squeeze(yHRF_SS(:,1,Right_ROI,3));
+all_chan_oxy_4_ipsi_R{subType}{sesID,subID} = squeeze(yHRF_SS(:,1,Right_ROI,4));
+
+all_chan_deoxy_1_ipsi_L{subType}{sesID,subID} = squeeze(yHRF_SS(:,2,Left_ROI,1));
+all_chan_deoxy_2_contra_L{subType}{sesID,subID} = squeeze(yHRF_SS(:,2,Left_ROI,2));
+all_chan_deoxy_3_ipsi_L{subType}{sesID,subID} = squeeze(yHRF_SS(:,2,Left_ROI,3));
+all_chan_deoxy_4_contra_L{subType}{sesID,subID} = squeeze(yHRF_SS(:,2,Left_ROI,4));
+
+all_chan_deoxy_1_contra_R{subType}{sesID,subID} = squeeze(yHRF_SS(:,2,Right_ROI,1));
+all_chan_deoxy_2_ipsi_R{subType}{sesID,subID} = squeeze(yHRF_SS(:,2,Right_ROI,2));
+all_chan_deoxy_3_contra_R{subType}{sesID,subID} = squeeze(yHRF_SS(:,2,Right_ROI,3));
+all_chan_deoxy_4_ipsi_R{subType}{sesID,subID} = squeeze(yHRF_SS(:,2,Right_ROI,4));
+
+all_chan_tot_1_ipsi_L{subType}{sesID,subID} = squeeze(yHRF_SS(:,3,Left_ROI,1));
+all_chan_tot_2_contra_L{subType}{sesID,subID} = squeeze(yHRF_SS(:,3,Left_ROI,2));
+all_chan_tot_3_ipsi_L{subType}{sesID,subID} = squeeze(yHRF_SS(:,3,Left_ROI,3));
+all_chan_tot_4_contra_L{subType}{sesID,subID} = squeeze(yHRF_SS(:,3,Left_ROI,4));
+
+all_chan_tot_1_contra_R{subType}{sesID,subID} = squeeze(yHRF_SS(:,3,Right_ROI,1));
+all_chan_tot_2_ipsi_R{subType}{sesID,subID} = squeeze(yHRF_SS(:,3,Right_ROI,2));
+all_chan_tot_3_contra_R{subType}{sesID,subID} = squeeze(yHRF_SS(:,3,Right_ROI,3));
+all_chan_tot_4_ipsi_R{subType}{sesID,subID} = squeeze(yHRF_SS(:,3,Right_ROI,4));
+
+end
+end
+end
+
+%%
+%%
+% clear all [] columnes in all_chan_oxy_1 to 4
+con_contra_R = all_chan_oxy_1_contra_R{1, 1};
+con_ipsi_L = all_chan_oxy_1_ipsi_L{1, 1};
+con_contra_L = all_chan_oxy_2_contra_L{1, 1};
+con_ipsi_R = all_chan_oxy_2_ipsi_R{1, 1};
+in_contra_R = all_chan_oxy_3_contra_R{1, 1};
+in_ipsi_L = all_chan_oxy_3_ipsi_L{1, 1};
+in_contra_L = all_chan_oxy_4_contra_L{1, 1};
+in_ipsi_R = all_chan_oxy_4_ipsi_R{1, 1};
+
+
+for n = 1:length(con_contra_R);
+    for m = 1:4;
+        
+    if con_contra_R{1,n}(:,m) == 0;
+        con_contra_R{1,n}(:,m) = NaN;
+    else
+        con_contra_R{1,n}(:,m);
+    end
+    
+      if con_ipsi_L{1,n}(:,m) == 0;
+        con_ipsi_L{1,n}(:,m) = NaN;
+    else
+        con_ipsi_L{1,n}(:,m);
+      end
+    
+       if con_contra_L{1,n}(:,m) == 0;
+        con_contra_L{1,n}(:,m) = NaN;
+    else
+        con_contra_L{1,n}(:,m);
+    end
+    
+      if con_ipsi_R{1,n}(:,m) == 0;
+        con_ipsi_R{1,n}(:,m) = NaN;
+    else
+        con_ipsi_R{1,n}(:,m);
+      end
+      
+         if in_contra_R{1,n}(:,m) == 0;
+        in_contra_R{1,n}(:,m) = NaN;
+    else
+        in_contra_R{1,n}(:,m);
+    end
+    
+      if in_ipsi_L{1,n}(:,m) == 0;
+        in_ipsi_L{1,n}(:,m) = NaN;
+    else
+        in_ipsi_L{1,n}(:,m);
+      end
+      
+         if in_contra_L{1,n}(:,m) == 0;
+        in_contra_L{1,n}(:,m) = NaN;
+    else
+        in_contra_L{1,n}(:,m);
+    end
+    
+      if in_ipsi_R{1,n}(:,m) == 0;
+        in_ipsi_R{1,n}(:,m) = NaN;
+    else
+        in_ipsi_R{1,n}(:,m);
+      end
+       
+    end
+end
+
+%%
+% The first session control
+for m = 1:length(con_contra_R);
+    
+Cong_Con{m} = nanmean([con_contra_L{1,m} con_contra_R{1,m} ]')'   ;
+Cong_Ips{m} = nanmean([con_ipsi_L{1,m} con_ipsi_R{1,m} ]')'   ;
+Incong_Con{m} = nanmean([in_contra_L{1,m} in_contra_R{1,m} ]')'   ;
+Incong_Ips{m} = nanmean([in_ipsi_L{1,m} in_ipsi_R{1,m} ]')'   ;
+
+end
+
+CongCon = cell2mat(Cong_Con) * 1000000;
+CongIps = cell2mat(Cong_Ips) * 1000000;
+InCon = cell2mat(Incong_Con) * 1000000;
+InIps = cell2mat(Incong_Ips) * 1000000;
+
+
+%%
+clear p_values
+for m = 20:141; %20 is at stimulus onset
+    
+p_values{m} = rep_animal_stroop_stat(CongCon(m,:), CongIps(m,:), InCon(m,:), InIps(m,:));
+
+end
+
+p_values = cell2mat(p_values');
+
+find(p_values(:,1)<0.05)% Congruency
+find(p_values(:,2)<0.05)% Hemisphere
+find(p_values(:,3)<0.05)% Interaction
